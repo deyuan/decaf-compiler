@@ -3,6 +3,9 @@
  * Lex inupt file to generate the scanner for the compiler.
  */
 
+/* Set this option to avoid using -lfl */
+%option noyywrap
+
 %{
 
 #include <string.h>

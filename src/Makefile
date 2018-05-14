@@ -42,8 +42,8 @@ LEXFLAGS = -d
 # The -y flag means imitate yacc's output file naming conventions
 YACCFLAGS = -dvty
 
-# Link with standard c library, math library, and lex library
-LIBS = -lc -lm -lfl
+# Link with standard c library, math library, and lex library (-lfl)
+LIBS = -lc -lm
 
 # Rules for various parts of the target
 
