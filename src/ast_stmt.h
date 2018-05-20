@@ -105,6 +105,32 @@ class BreakStmt : public Stmt
     const char *GetPrintNameForNode() { return "BreakStmt"; }
 };
 
+class IntConstant;
+
+class CaseStmt : public Stmt
+{
+  protected:
+    IntConstant *value;
+    List<Stmt*> *stmts;
+
+  public:
+    CaseStmt(IntConstant *v, List<Stmt*> *stmts);
+    const char *GetPrintNameForNode() { return value ? "Case" : "Default"; }
+    void PrintChildren(int indentLevel);
+};
+
+class SwitchStmt : public Stmt
+{
+  protected:
+    Expr *expr;
+    List<CaseStmt*> *cases;
+
+  public:
+    SwitchStmt(Expr *expr, List<CaseStmt*> *cases);
+    const char *GetPrintNameForNode() { return "SwitchStmt"; }
+    void PrintChildren(int indentLevel);
+};
+
 class ReturnStmt : public Stmt
 {
   protected:

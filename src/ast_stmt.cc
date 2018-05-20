@@ -65,6 +65,28 @@ void IfStmt::PrintChildren(int indentLevel) {
     if (elseBody) elseBody->Print(indentLevel+1, "(else) ");
 }
 
+CaseStmt::CaseStmt(IntConstant *v, List<Stmt*> *s) {
+    Assert(s != NULL);
+    value = v;
+    if (value) value->SetParent(this);
+    (stmts=s)->SetParentAll(this);
+}
+
+void CaseStmt::PrintChildren(int indentLevel) {
+    if (value) value->Print(indentLevel+1);
+    stmts->PrintAll(indentLevel+1);
+}
+
+SwitchStmt::SwitchStmt(Expr *e, List<CaseStmt*> *c) {
+    Assert(e != NULL && c != NULL);
+    (expr=e)->SetParent(this);
+    (cases=c)->SetParentAll(this);
+}
+
+void SwitchStmt::PrintChildren(int indentLevel) {
+    expr->Print(indentLevel+1);
+    cases->PrintAll(indentLevel+1);
+}
 
 ReturnStmt::ReturnStmt(yyltype loc, Expr *e) : Stmt(loc) {
     Assert(e != NULL);
