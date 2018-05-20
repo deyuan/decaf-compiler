@@ -45,12 +45,21 @@ Identifier::Identifier(yyltype loc, const char *n) : Node(loc) {
 
 void Identifier::PrintChildren(int indentLevel) {
     printf("%s", name);
+    if (decl) printf(" ---------------- {%d}", decl->GetIndex());
 }
 
-void Identifier::Check() {
+void Identifier::CheckDecl() {
     Decl *d = symtab->Lookup(this);
     if (d == NULL) {
         ReportError::IdentifierNotDeclared(this, LookingForVariable);
+    } else {
+        this->SetDecl(d);
+    }
+}
+
+void Identifier::Check(checkT c) {
+    if (c == E_CheckDecl) {
+        this->CheckDecl();
     }
 }
 

@@ -19,10 +19,15 @@ void Program::PrintChildren(int indentLevel) {
 }
 
 void Program::BuildST() {
-    /* pp3: one pass on AST to build the symbol table. */
+    if (IsDebugOn("ast")) { this->Print(0); }
     symtab = new SymbolTable();
+
+    /* Pass 1: Traverse the AST and build the symbol table. Report the
+     * errors of declaration conflict in any local scopes. */
     decls->BuildSTAll();
-    //symtab->Print();
+    if (IsDebugOn("st")) { symtab->Print(); }
+    PrintDebug("ast+", "BuildST finished.");
+    if (IsDebugOn("ast+")) { this->Print(0); }
 }
 
 void Program::Check() {
@@ -33,8 +38,27 @@ void Program::Check() {
      *      checking itself, which makes for a great use of inheritance
      *      and polymorphism in the node classes.
      */
+
+    /* Pass 2: Traverse the AST and report any errors of undeclared
+     * identifiers except the field access and function calls. */
     symtab->ResetSymbolTable();
-    decls->CheckAll();
+    decls->CheckAll(E_CheckDecl);
+    PrintDebug("ast+", "CheckDecl finished.");
+    if (IsDebugOn("ast+")) { this->Print(0); }
+
+    /* Pass 3: Traverse the AST and report errors related to the class and
+     * interface inheritance. */
+    symtab->ResetSymbolTable();
+    decls->CheckAll(E_CheckInherit);
+    PrintDebug("ast+", "CheckInherit finished.");
+    if (IsDebugOn("ast+")) { this->Print(0); }
+
+    /* Pass 4: Traverse the AST and report errors related to types, function
+     * calls and field access. Actually, check all the remaining errors. */
+    symtab->ResetSymbolTable();
+    decls->CheckAll(E_CheckType);
+    PrintDebug("ast+", "CheckType finished.");
+    if (IsDebugOn("ast+")) { this->Print(0); }
 }
 
 StmtBlock::StmtBlock(List<VarDecl*> *d, List<Stmt*> *s) {
@@ -55,10 +79,10 @@ void StmtBlock::BuildST() {
     symtab->ExitScope();
 }
 
-void StmtBlock::Check() {
+void StmtBlock::Check(checkT c) {
     symtab->EnterScope();
-    decls->CheckAll();
-    stmts->CheckAll();
+    decls->CheckAll(c);
+    stmts->CheckAll(c);
     symtab->ExitScope();
 }
 
@@ -87,13 +111,30 @@ void ForStmt::BuildST() {
     symtab->ExitScope();
 }
 
-void ForStmt::Check() {
-    init->Check();
-    test->Check();
-    step->Check();
+void ForStmt::CheckType() {
+    init->Check(E_CheckType);
+    test->Check(E_CheckType);
+    if (test->GetType() && test->GetType() != Type::boolType) {
+        ReportError::TestNotBoolean(test);
+    }
+    step->Check(E_CheckType);
     symtab->EnterScope();
-    body->Check();
+    body->Check(E_CheckType);
     symtab->ExitScope();
+}
+
+void ForStmt::Check(checkT c) {
+    switch (c) {
+        case E_CheckType:
+            this->CheckType(); break;
+        default:
+            init->Check(c);
+            test->Check(c);
+            step->Check(c);
+            symtab->EnterScope();
+            body->Check(c);
+            symtab->ExitScope();
+    }
 }
 
 void WhileStmt::PrintChildren(int indentLevel) {
@@ -107,11 +148,26 @@ void WhileStmt::BuildST() {
     symtab->ExitScope();
 }
 
-void WhileStmt::Check() {
-    test->Check();
+void WhileStmt::CheckType() {
+    test->Check(E_CheckType);
+    if (test->GetType() && test->GetType() != Type::boolType) {
+        ReportError::TestNotBoolean(test);
+    }
     symtab->EnterScope();
-    body->Check();
+    body->Check(E_CheckType);
     symtab->ExitScope();
+}
+
+void WhileStmt::Check(checkT c) {
+    switch (c) {
+        case E_CheckType:
+            this->CheckType(); break;
+        default:
+            test->Check(c);
+            symtab->EnterScope();
+            body->Check(c);
+            symtab->ExitScope();
+    }
 }
 
 IfStmt::IfStmt(Expr *t, Stmt *tb, Stmt *eb): ConditionalStmt(t, tb) {
@@ -137,15 +193,46 @@ void IfStmt::BuildST() {
     }
 }
 
-void IfStmt::Check() {
-    test->Check();
+void IfStmt::CheckType() {
+    test->Check(E_CheckType);
+    if (test->GetType() && test->GetType() != Type::boolType) {
+        ReportError::TestNotBoolean(test);
+    }
     symtab->EnterScope();
-    body->Check();
+    body->Check(E_CheckType);
     symtab->ExitScope();
     if (elseBody) {
         symtab->EnterScope();
-        elseBody->Check();
+        elseBody->Check(E_CheckType);
         symtab->ExitScope();
+    }
+}
+
+void IfStmt::Check(checkT c) {
+    switch (c) {
+        case E_CheckType:
+            this->CheckType(); break;
+        default:
+            test->Check(c);
+            symtab->EnterScope();
+            body->Check(c);
+            symtab->ExitScope();
+            if (elseBody) {
+                symtab->EnterScope();
+                elseBody->Check(c);
+                symtab->ExitScope();
+            }
+    }
+}
+
+void BreakStmt::Check(checkT c) {
+    if (c == E_CheckType) {
+        Node *n = this;
+        while (n->GetParent()) {
+            if (n->IsLoopStmt() || n->IsCaseStmt()) return;
+            n = n->GetParent();
+        }
+        ReportError::BreakOutsideLoop(this);
     }
 }
 
@@ -167,10 +254,10 @@ void CaseStmt::BuildST() {
     symtab->ExitScope();
 }
 
-void CaseStmt::Check() {
-    if (value) value->Check();
+void CaseStmt::Check(checkT c) {
+    if (value) value->Check(c);
     symtab->EnterScope();
-    stmts->CheckAll();
+    stmts->CheckAll(c);
     symtab->ExitScope();
 }
 
@@ -191,10 +278,10 @@ void SwitchStmt::BuildST() {
     symtab->ExitScope();
 }
 
-void SwitchStmt::Check() {
-    expr->Check();
+void SwitchStmt::Check(checkT c) {
+    expr->Check(c);
     symtab->EnterScope();
-    cases->CheckAll();
+    cases->CheckAll(c);
     symtab->ExitScope();
 }
 
@@ -207,8 +294,23 @@ void ReturnStmt::PrintChildren(int indentLevel) {
     expr->Print(indentLevel+1);
 }
 
-void ReturnStmt::Check() {
-    expr->Check();
+void ReturnStmt::Check(checkT c) {
+    expr->Check(c);
+    if (c == E_CheckType) {
+        Node *n = this;
+        // find the FnDecl.
+        while (n->GetParent()) {
+            if (dynamic_cast<FnDecl*>(n) != NULL) break;
+            n = n->GetParent();
+        }
+        Type *t_given = expr->GetType();
+        Type *t_expected = dynamic_cast<FnDecl*>(n)->GetType();
+        if (t_given && t_expected) {
+            if (!t_expected->IsCompatibleWith(t_given)) {
+                ReportError::ReturnMismatch(this, t_given, t_expected);
+            }
+        }
+    }
 }
 
 PrintStmt::PrintStmt(List<Expr*> *a) {
@@ -220,7 +322,16 @@ void PrintStmt::PrintChildren(int indentLevel) {
     args->PrintAll(indentLevel+1, "(args) ");
 }
 
-void PrintStmt::Check() {
-    args->CheckAll();
+void PrintStmt::Check(checkT c) {
+    args->CheckAll(c);
+    if (c == E_CheckType) {
+        for (int i = 0; i < args->NumElements(); i++) {
+            Type *t = args->Nth(i)->GetType();
+            if (t != NULL && t != Type::stringType && t != Type::intType
+                     && t != Type::boolType) {
+                ReportError::PrintArgMismatch(args->Nth(i), i + 1, t);
+            }
+        }
+    }
 }
 

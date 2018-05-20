@@ -30,6 +30,7 @@
 
 #include <deque>
 #include "utility.h"  // for Assert()
+#include "errors.h"
 
 class Node;
 
@@ -85,9 +86,9 @@ template<class Element> class List {
         { for (int i = 0; i < NumElements(); i++)
              Nth(i)->BuildST(); }
         // Check all the elements of a list.
-    void CheckAll()
+    void CheckAll(checkT c)
         { for (int i = 0; i < NumElements(); i++)
-             Nth(i)->Check(); }
+             Nth(i)->Check(c); }
 };
 
 #endif

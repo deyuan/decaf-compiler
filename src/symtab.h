@@ -42,8 +42,12 @@ class SymbolTable {
     Decl *LookupParent(Identifier *id);
     /* Look up symbol in interface scopes. */
     Decl *LookupInterface(Identifier *id);
+    /* Look up symbol in a given class/interface name. */
+    Decl *LookupField(Identifier *base, Identifier *field);
+    /* Look up the class decl for This. */
+    Decl *LookupThis();
     /* Insert new symbol into current scope. */
-    void InsertSymbol(Decl *decl);
+    int InsertSymbol(Decl *decl);
     /* Look up symbol in current scope. */
     bool LocalLookup(Identifier *id);
     /* Exit current scope and return to its parent scope. */

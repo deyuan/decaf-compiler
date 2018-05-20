@@ -25,6 +25,7 @@ class Decl : public Node
 {
   protected:
     Identifier *id;
+    int idx;
 
   public:
     Decl(Identifier *name);
@@ -32,6 +33,7 @@ class Decl : public Node
         { return out << d->id; }
 
     Identifier *GetId() { return id; }
+    int GetIndex() { return idx; }
 
     virtual bool IsVarDecl() { return false; }
     virtual bool IsClassDecl() { return false; }
@@ -43,6 +45,7 @@ class VarDecl : public Decl
 {
   protected:
     Type *type;
+    void CheckDecl();
 
   public:
     VarDecl(Identifier *name, Type *type);
@@ -53,7 +56,7 @@ class VarDecl : public Decl
     bool IsVarDecl() { return true; }
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 class ClassDecl : public Decl
@@ -62,6 +65,8 @@ class ClassDecl : public Decl
     List<Decl*> *members;
     NamedType *extends;
     List<NamedType*> *implements;
+    void CheckDecl();
+    void CheckInherit();
 
   public:
     ClassDecl(Identifier *name, NamedType *extends,
@@ -71,13 +76,16 @@ class ClassDecl : public Decl
 
     bool IsClassDecl() { return true; }
     void BuildST();
-    void Check();
+    void Check(checkT c);
+    bool IsChildOf(Decl *other);
+    NamedType * GetExtends() { return extends; }
 };
 
 class InterfaceDecl : public Decl
 {
   protected:
     List<Decl*> *members;
+    void CheckDecl();
 
   public:
     InterfaceDecl(Identifier *name, List<Decl*> *members);
@@ -86,7 +94,8 @@ class InterfaceDecl : public Decl
 
     bool IsInterfaceDecl() { return true; }
     void BuildST();
-    void Check();
+    void Check(checkT c);
+    List<Decl*> * GetMembers() { return members; }
 };
 
 class FnDecl : public Decl
@@ -95,6 +104,7 @@ class FnDecl : public Decl
     List<VarDecl*> *formals;
     Type *returnType;
     Stmt *body;
+    void CheckDecl();
 
   public:
     FnDecl(Identifier *name, Type *returnType, List<VarDecl*> *formals);
@@ -109,7 +119,7 @@ class FnDecl : public Decl
     bool IsEquivalentTo(Decl *fn);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 #endif

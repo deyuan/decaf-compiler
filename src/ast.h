@@ -40,12 +40,14 @@
 #include "location.h"
 #include <iostream>
 #include "symtab.h"
+#include "errors.h"
 
 class Node
 {
   protected:
     yyltype *location;
     Node *parent;
+    Type *expr_type; // link to the type of each node (not for stmt)
 
   public:
     Node(yyltype loc);
@@ -63,7 +65,10 @@ class Node
     virtual void PrintChildren(int indentLevel)  {}
 
     virtual void BuildST() {}
-    virtual void Check() {}
+    virtual void Check(checkT c) {}
+    virtual Type * GetType() { return expr_type; }
+    virtual bool IsLoopStmt() { return false; }
+    virtual bool IsCaseStmt() { return false; }
 };
 
 
@@ -71,6 +76,8 @@ class Identifier : public Node
 {
   protected:
     char *name;
+    Decl *decl;
+    void CheckDecl();
 
   public:
     Identifier(yyltype loc, const char *name);
@@ -80,8 +87,10 @@ class Identifier : public Node
         { return out << id->name; }
 
     char *GetIdName() { return name; }
-    void Check();
+    void Check(checkT c);
     bool IsEquivalentTo(Identifier *other);
+    void SetDecl(Decl *d) { decl = d; }
+    Decl * GetDecl() { return decl; }
 };
 
 

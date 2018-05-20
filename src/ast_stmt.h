@@ -22,6 +22,7 @@
 class Decl;
 class VarDecl;
 class Expr;
+class SymbolTable;
 
 class Program : public Node
 {
@@ -35,6 +36,7 @@ class Program : public Node
 
      void BuildST();
      void Check();
+     void Check(checkT c) { Check(); }
 };
 
 class Stmt : public Node
@@ -56,7 +58,7 @@ class StmtBlock : public Stmt
     void PrintChildren(int indentLevel);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 
@@ -75,12 +77,14 @@ class LoopStmt : public ConditionalStmt
   public:
     LoopStmt(Expr *testExpr, Stmt *body)
             : ConditionalStmt(testExpr, body) {}
+    bool IsLoopStmt() { return true; }
 };
 
 class ForStmt : public LoopStmt
 {
   protected:
     Expr *init, *step;
+    void CheckType();
 
   public:
     ForStmt(Expr *init, Expr *test, Expr *step, Stmt *body);
@@ -88,24 +92,28 @@ class ForStmt : public LoopStmt
     void PrintChildren(int indentLevel);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 class WhileStmt : public LoopStmt
 {
+  protected:
+    void CheckType();
+
   public:
     WhileStmt(Expr *test, Stmt *body) : LoopStmt(test, body) {}
     const char *GetPrintNameForNode() { return "WhileStmt"; }
     void PrintChildren(int indentLevel);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 class IfStmt : public ConditionalStmt
 {
   protected:
     Stmt *elseBody;
+    void CheckType();
 
   public:
     IfStmt(Expr *test, Stmt *thenBody, Stmt *elseBody);
@@ -113,7 +121,7 @@ class IfStmt : public ConditionalStmt
     void PrintChildren(int indentLevel);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 class BreakStmt : public Stmt
@@ -121,6 +129,7 @@ class BreakStmt : public Stmt
   public:
     BreakStmt(yyltype loc) : Stmt(loc) {}
     const char *GetPrintNameForNode() { return "BreakStmt"; }
+    void Check(checkT c);
 };
 
 class IntConstant;
@@ -137,7 +146,7 @@ class CaseStmt : public Stmt
     void PrintChildren(int indentLevel);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 class SwitchStmt : public Stmt
@@ -152,7 +161,7 @@ class SwitchStmt : public Stmt
     void PrintChildren(int indentLevel);
 
     void BuildST();
-    void Check();
+    void Check(checkT c);
 };
 
 class ReturnStmt : public Stmt
@@ -165,7 +174,7 @@ class ReturnStmt : public Stmt
     const char *GetPrintNameForNode() { return "ReturnStmt"; }
     void PrintChildren(int indentLevel);
 
-    void Check();
+    void Check(checkT c);
 };
 
 class PrintStmt : public Stmt
@@ -178,7 +187,7 @@ class PrintStmt : public Stmt
     const char *GetPrintNameForNode() { return "PrintStmt"; }
     void PrintChildren(int indentLevel);
 
-    void Check();
+    void Check(checkT c);
 };
 
 

@@ -28,13 +28,15 @@ class Scope {
 
   public:
     Scope() {
-        ht = new Hashtable<Decl*>;
+        ht = NULL;
         parent = NULL;
         interface = new std::list<const char *>;
         interface->clear();
         owner = NULL;
     }
 
+    bool HasHT() { return ht == NULL ? false : true; }
+    void BuildHT() { ht = new Hashtable<Decl*>; }
     Hashtable<Decl*> * GetHT() { return ht; }
 
     bool HasParent() { return parent == NULL ? false : true; }
@@ -54,6 +56,7 @@ class Scope {
  */
 SymbolTable::SymbolTable()
 {
+    PrintDebug("sttrace", "SymbolTable constructor.\n");
     /* Init the global scope. */
     scopes = new std::vector<Scope *>;
     scopes->clear();
@@ -75,6 +78,7 @@ SymbolTable::SymbolTable()
  */
 void
 SymbolTable::ResetSymbolTable() {
+    PrintDebug("sttrace", "======== Reset SymbolTable ========\n");
     activeScopes->clear();
     activeScopes->push_back(0);
 
@@ -89,6 +93,7 @@ SymbolTable::ResetSymbolTable() {
 void
 SymbolTable::BuildScope()
 {
+    PrintDebug("sttrace", "Build new scope %d.\n", scope_cnt + 1);
     scope_cnt++;
     scopes->push_back(new Scope());
     activeScopes->push_back(scope_cnt);
@@ -101,6 +106,7 @@ SymbolTable::BuildScope()
 void
 SymbolTable::BuildScope(const char *key)
 {
+    PrintDebug("sttrace", "Build new scope %d.\n", scope_cnt + 1);
     scope_cnt++;
     scopes->push_back(new Scope());
     scopes->at(scope_cnt)->SetOwner(key);
@@ -114,6 +120,7 @@ SymbolTable::BuildScope(const char *key)
 void
 SymbolTable::EnterScope()
 {
+    PrintDebug("sttrace", "Enter scope %d.\n", scope_cnt + 1);
     scope_cnt++;
     activeScopes->push_back(scope_cnt);
     cur_scope = scope_cnt;
@@ -136,6 +143,7 @@ SymbolTable::FindScopeFromOwnerName(const char *key)
         }
     }
 
+    PrintDebug("sttrace", "From %s find scope %d.\n", key, scope);
     return scope;
 }
 
@@ -148,6 +156,7 @@ SymbolTable::Lookup(Identifier *id)
     Decl *d = NULL;
     const char *parent = NULL;
     const char *key = id->GetIdName();
+    PrintDebug("sttrace", "Lookup %s from active scopes %d.\n", key, cur_scope);
 
     //printf("Look up %s from scope %d\n", key, cur_scope);
 
@@ -155,19 +164,25 @@ SymbolTable::Lookup(Identifier *id)
     for (int i = activeScopes->size(); i > 0; --i) {
 
         int scope = activeScopes->at(i-1);
+        Scope *s = scopes->at(scope);
 
-        d = scopes->at(scope)->GetHT()->Lookup(key);
+        if (s->HasHT()) {
+            d = s->GetHT()->Lookup(key);
+        }
         if (d != NULL) break;
 
-        while (scopes->at(scope)->HasParent()) {
-            parent = scopes->at(scope)->GetParent();
+        while (s->HasParent()) {
+            parent = s->GetParent();
             scope = FindScopeFromOwnerName(parent);
             if (scope != -1) {
                 if (scope == cur_scope) {
                     // If the parent relation has a loop, then report an error.
                     break;
                 } else {
-                    d = scopes->at(scope)->GetHT()->Lookup(key);
+                    s = scopes->at(scope);
+                    if (s->HasHT()) {
+                        d = s->GetHT()->Lookup(key);
+                    }
                     if (d != NULL) break;
                 }
             } else {
@@ -189,13 +204,13 @@ SymbolTable::LookupParent(Identifier *id)
     Decl *d = NULL;
     const char *parent = NULL;
     const char *key = id->GetIdName();
-    int scope;
+    Scope *s = scopes->at(cur_scope);
+    PrintDebug("sttrace", "Lookup %s in parent of %d.\n", key, cur_scope);
 
-    scope = cur_scope;
     // Look up parent scopes.
-    while (scopes->at(scope)->HasParent()) {
-        parent = scopes->at(scope)->GetParent();
-        scope = FindScopeFromOwnerName(parent);
+    while (s->HasParent()) {
+        parent = s->GetParent();
+        int scope = FindScopeFromOwnerName(parent);
         //printf("Look up %s from %s\n", key, parent);
 
         if (scope != -1) {
@@ -203,7 +218,10 @@ SymbolTable::LookupParent(Identifier *id)
                 // If the parent relation has a loop, then report an error.
                 break;
             } else {
-                d = scopes->at(scope)->GetHT()->Lookup(key);
+                s = scopes->at(scope);
+                if (s->HasHT()) {
+                    d = s->GetHT()->Lookup(key);
+                }
                 if (d != NULL) break;
             }
         }
@@ -221,11 +239,13 @@ SymbolTable::LookupInterface(Identifier *id)
     Decl *d = NULL;
     const char *key = id->GetIdName();
     int scope;
+    Scope *s = scopes->at(cur_scope);
+    PrintDebug("sttrace", "Lookup %s in interface of %d.\n", key, cur_scope);
 
     // Look up interface scopes.
-    if (scopes->at(cur_scope)->HasInterface()) {
+    if (s->HasInterface()) {
 
-        std::list<const char *> * itfc = scopes->at(cur_scope)->GetInterface();
+        std::list<const char *> * itfc = s->GetInterface();
 
         for (std::list<const char *>::iterator it = itfc->begin();
                 it != itfc->end(); it++) {
@@ -233,7 +253,10 @@ SymbolTable::LookupInterface(Identifier *id)
             //printf("Look up %s from %s\n", key, *it);
 
             if (scope != -1) {
-                d = scopes->at(scope)->GetHT()->Lookup(key);
+                Scope *sc = scopes->at(scope);
+                if (sc->HasHT()) {
+                    d = sc->GetHT()->Lookup(key);
+                }
                 if (d != NULL) break;
             }
         }
@@ -242,13 +265,88 @@ SymbolTable::LookupInterface(Identifier *id)
 }
 
 /*
+ * Look up symbol in a given class/interface name.
+ */
+Decl * SymbolTable::LookupField(Identifier *base, Identifier *field) {
+    Decl *d = NULL;
+    const char *b = base->GetIdName();
+    const char *f = field->GetIdName();
+    PrintDebug("sttrace", "Lookup %s from field %s\n", f, b);
+
+    // find scope from field name.
+    int scope = FindScopeFromOwnerName(b);
+    if (scope == -1) return NULL;
+
+    // lookup the given field.
+    Scope *s = scopes->at(scope);
+    if (s->HasHT()) {
+        d = s->GetHT()->Lookup(f);
+    }
+    if (d != NULL) return d;
+
+    // lookup the parent.
+    while (s->HasParent()) {
+        b = s->GetParent();
+        scope = FindScopeFromOwnerName(b);
+        if (scope != -1) {
+            if (scope == cur_scope) {
+                // If the parent relation has a loop, then report an error.
+                break;
+            } else {
+                s = scopes->at(scope);
+                if (s->HasHT()) {
+                    d = s->GetHT()->Lookup(f);
+                }
+                if (d != NULL) break;
+            }
+        } else {
+            break;
+        }
+    }
+    return d;
+}
+
+/*
+ * Look up the class decl for This.
+ */
+Decl * SymbolTable::LookupThis() {
+    PrintDebug("sttrace", "Lookup This\n");
+    Decl *d = NULL;
+    // Look up all the active scopes.
+    for (int i = activeScopes->size(); i > 0; --i) {
+
+        int scope = activeScopes->at(i-1);
+        Scope *s = scopes->at(scope);
+
+        if (s->HasOwner()) {
+            PrintDebug("sttrace", "Lookup This as %s\n", s->GetOwner());
+            // Look up scope 0 to find the class decl.
+            Scope *s0 = scopes->at(0);
+            if (s0->HasHT()) {
+                d = s0->GetHT()->Lookup(s->GetOwner());
+            }
+        }
+        if (d) break;
+    }
+    return d;
+}
+
+/*
  * Insert new symbol into current scope.
  */
-void
+int
 SymbolTable::InsertSymbol(Decl *decl)
 {
     const char *key = decl->GetId()->GetIdName();
-    scopes->at(cur_scope)->GetHT()->Enter(key, decl);
+    Scope *s = scopes->at(cur_scope);
+    PrintDebug("sttrace", "Insert %s to scope %d\n", key, cur_scope);
+
+    if (!s->HasHT()) {
+        s->BuildHT();
+    }
+
+    s->GetHT()->Enter(key, decl);
+    return id_cnt++;
 }
 
 /*
@@ -257,10 +355,14 @@ SymbolTable::InsertSymbol(Decl *decl)
 bool
 SymbolTable::LocalLookup(Identifier *id)
 {
-    Decl *d;
+    Decl *d = NULL;
     const char *key = id->GetIdName();
+    Scope *s = scopes->at(cur_scope);
+    PrintDebug("sttrace", "LocalLookup %s from scope %d\n", key, cur_scope);
 
-    d = scopes->at(cur_scope)->GetHT()->Lookup(key);
+    if (s->HasHT()) {
+        d = s->GetHT()->Lookup(key);
+    }
 
     return (d == NULL) ? false : true;
 }
@@ -271,6 +373,7 @@ SymbolTable::LocalLookup(Identifier *id)
 void
 SymbolTable::ExitScope()
 {
+    PrintDebug("sttrace", "Exit scope %d\n", cur_scope);
     activeScopes->pop_back();
     cur_scope = activeScopes->back();
 }
@@ -298,17 +401,22 @@ SymbolTable::SetInterface(const char *key)
  */
 void SymbolTable::Print()
 {
-    std::cout << "======== Symbol Table ========" << std::endl;
+    std::cout << std::endl << "======== Symbol Table ========" << std::endl;
 
     for (int i = 0; i < scopes->size(); i++) {
-        std::cout << "|- Hash Table for Scope " << i << ":";
-        if (scopes->at(i)->HasOwner())
-            std::cout << " (owner: " << scopes->at(i)->GetOwner() << ")";
-        if (scopes->at(i)->HasParent())
-            std::cout << " (parent: " << scopes->at(i)->GetParent() << ")";
-        if (scopes->at(i)->HasInterface()) {
+        Scope *s = scopes->at(i);
+
+        if (!s->HasHT() && !s->HasOwner() && !s->HasParent()
+                && !s->HasInterface()) continue;
+
+        std::cout << "|- Scope " << i << ":";
+        if (s->HasOwner())
+            std::cout << " (owner: " << s->GetOwner() << ")";
+        if (s->HasParent())
+            std::cout << " (parent: " << s->GetParent() << ")";
+        if (s->HasInterface()) {
             std::cout << " (interface: ";
-            std::list<const char *> *interface = scopes->at(i)->GetInterface();
+            std::list<const char *> *interface = s->GetInterface();
             for (std::list<const char *>::iterator it = interface->begin();
                     it != interface->end(); it++) {
                 std::cout << *it << " ";
@@ -318,10 +426,12 @@ void SymbolTable::Print()
 
         std::cout << std::endl;
 
-        Iterator<Decl*> iter = scopes->at(i)->GetHT()->GetIterator();
-        Decl *decl;
-        while ((decl = iter.GetNextValue()) != NULL) {
-            std::cout << "|  + " << decl << std::endl;
+        if (s->HasHT()) {
+            Iterator<Decl*> iter = s->GetHT()->GetIterator();
+            Decl *decl;
+            while ((decl = iter.GetNextValue()) != NULL) {
+                std::cout << "|  + " << decl << std::endl;
+            }
         }
     }
 

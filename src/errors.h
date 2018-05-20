@@ -46,6 +46,12 @@ class Operator;
 
 typedef enum {LookingForType, LookingForClass, LookingForInterface, LookingForVariable, LookingForFunction} reasonT;
 
+typedef enum {
+    E_CheckDecl,
+    E_CheckInherit,
+    E_CheckType
+} checkT;
+
 class ReportError
 {
  public:
