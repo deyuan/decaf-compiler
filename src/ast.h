@@ -25,6 +25,11 @@
  * PrintChildren() and GetPrintNameForNode() methods. All the classes we
  * provide already implement these methods, so your job is to construct the
  * nodes and wire them up during parsing. Once that's done, printing is a snap!
+ *
+ * Semantic analysis: For pp3 you are adding "Check" behavior to the ast
+ * node classes. Your semantic analyzer should do an inorder walk on the
+ * parse tree, and when visiting each node, verify the particular
+ * semantic rules that apply to that construct.
 
  */
 
@@ -33,6 +38,8 @@
 
 #include <stdlib.h>   // for NULL
 #include "location.h"
+#include <iostream>
+#include "symtab.h"
 
 class Node
 {
@@ -54,6 +61,9 @@ class Node
     // subclasses should override PrintChildren() instead
     void Print(int indentLevel, const char *label = NULL);
     virtual void PrintChildren(int indentLevel)  {}
+
+    virtual void BuildST() {}
+    virtual void Check() {}
 };
 
 
@@ -66,6 +76,12 @@ class Identifier : public Node
     Identifier(yyltype loc, const char *name);
     const char *GetPrintNameForNode()   { return "Identifier"; }
     void PrintChildren(int indentLevel);
+    friend std::ostream& operator<<(std::ostream& out, Identifier *id)
+        { return out << id->name; }
+
+    char *GetIdName() { return name; }
+    void Check();
+    bool IsEquivalentTo(Identifier *other);
 };
 
 

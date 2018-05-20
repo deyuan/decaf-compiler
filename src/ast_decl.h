@@ -4,6 +4,10 @@
  * manage declarations. There are 4 subclasses of the base class,
  * specialized for declarations of variables, functions, classes,
  * and interfaces.
+ *
+ * pp3: You will need to extend the Decl classes to implement
+ * semantic processing including detection of declaration conflicts
+ * and managing scoping issues.
  */
 
 #ifndef _H_ast_decl
@@ -24,6 +28,15 @@ class Decl : public Node
 
   public:
     Decl(Identifier *name);
+    friend std::ostream& operator<<(std::ostream& out, Decl *d)
+        { return out << d->id; }
+
+    Identifier *GetId() { return id; }
+
+    virtual bool IsVarDecl() { return false; }
+    virtual bool IsClassDecl() { return false; }
+    virtual bool IsInterfaceDecl() { return false; }
+    virtual bool IsFnDecl() { return false; }
 };
 
 class VarDecl : public Decl
@@ -35,6 +48,12 @@ class VarDecl : public Decl
     VarDecl(Identifier *name, Type *type);
     const char *GetPrintNameForNode() { return "VarDecl"; }
     void PrintChildren(int indentLevel);
+
+    Type * GetType() { return type; }
+    bool IsVarDecl() { return true; }
+
+    void BuildST();
+    void Check();
 };
 
 class ClassDecl : public Decl
@@ -49,6 +68,10 @@ class ClassDecl : public Decl
               List<NamedType*> *implements, List<Decl*> *members);
     const char *GetPrintNameForNode() { return "ClassDecl"; }
     void PrintChildren(int indentLevel);
+
+    bool IsClassDecl() { return true; }
+    void BuildST();
+    void Check();
 };
 
 class InterfaceDecl : public Decl
@@ -60,6 +83,10 @@ class InterfaceDecl : public Decl
     InterfaceDecl(Identifier *name, List<Decl*> *members);
     const char *GetPrintNameForNode() { return "InterfaceDecl"; }
     void PrintChildren(int indentLevel);
+
+    bool IsInterfaceDecl() { return true; }
+    void BuildST();
+    void Check();
 };
 
 class FnDecl : public Decl
@@ -74,6 +101,15 @@ class FnDecl : public Decl
     void SetFunctionBody(Stmt *b);
     const char *GetPrintNameForNode() { return "FnDecl"; }
     void PrintChildren(int indentLevel);
+
+    Type * GetReturnType() { return returnType; }
+    List<VarDecl*> * GetFormals() { return formals; }
+
+    bool IsFnDecl() { return true; }
+    bool IsEquivalentTo(Decl *fn);
+
+    void BuildST();
+    void Check();
 };
 
 #endif

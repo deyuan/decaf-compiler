@@ -7,6 +7,12 @@
  *      accept the language as described in specification, and as augmented
  *      in the pp2 handout.
  *
+ * pp3: add parser rules and tree construction from your pp2. You should
+ *      not need to make any significant changes in the parser itself. After
+ *      parsing completes, if no syntax errors were found, the parser calls
+ *      program->Check() to kick off the semantic analyzer pass. The
+ *      interesting work happens during the tree traversal.
+ *
  * Author: Deyuan Guo
  * Date: Oct 29, 2013
  */
@@ -172,8 +178,11 @@ Program   :    DeclList            {
                                        * it once you have other uses of @n */
                                       Program *program = new Program($1);
                                       // if no errors, advance to next phase
-                                      if (ReportError::NumErrors() == 0)
-                                          program->Print(0);
+                                      if (ReportError::NumErrors() == 0) {
+                                          //program->Print(0);
+                                          program->BuildST();
+                                          program->Check();
+                                      }
                                     }
 ;
 

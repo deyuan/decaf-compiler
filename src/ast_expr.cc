@@ -6,7 +6,7 @@
 #include "ast_type.h"
 #include "ast_decl.h"
 #include <string.h>
-
+#include "errors.h"
 
 
 IntConstant::IntConstant(yyltype loc, int val) : Expr(loc) {
@@ -16,6 +16,9 @@ void IntConstant::PrintChildren(int indentLevel) {
     printf("%d", value);
 }
 
+void IntConstant::Check() {
+}
+
 DoubleConstant::DoubleConstant(yyltype loc, double val) : Expr(loc) {
     value = val;
 }
@@ -23,11 +26,17 @@ void DoubleConstant::PrintChildren(int indentLevel) {
     printf("%g", value);
 }
 
+void DoubleConstant::Check() {
+}
+
 BoolConstant::BoolConstant(yyltype loc, bool val) : Expr(loc) {
     value = val;
 }
 void BoolConstant::PrintChildren(int indentLevel) {
     printf("%s", value ? "true" : "false");
+}
+
+void BoolConstant::Check() {
 }
 
 StringConstant::StringConstant(yyltype loc, const char *val) : Expr(loc) {
@@ -38,6 +47,9 @@ void StringConstant::PrintChildren(int indentLevel) {
     printf("%s",value);
 }
 
+void StringConstant::Check() {
+}
+
 Operator::Operator(yyltype loc, const char *tok) : Node(loc) {
     Assert(tok != NULL);
     strncpy(tokenString, tok, sizeof(tokenString));
@@ -45,6 +57,9 @@ Operator::Operator(yyltype loc, const char *tok) : Node(loc) {
 
 void Operator::PrintChildren(int indentLevel) {
     printf("%s",tokenString);
+}
+
+void Operator::Check() {
 }
 
 CompoundExpr::CompoundExpr(Expr *l, Operator *o, Expr *r)
@@ -69,6 +84,11 @@ void CompoundExpr::PrintChildren(int indentLevel) {
    right->Print(indentLevel+1);
 }
 
+void CompoundExpr::Check() {
+    if (left) left->Check();
+    op->Check();
+    right->Check();
+}
 
 ArrayAccess::ArrayAccess(yyltype loc, Expr *b, Expr *s) : LValue(loc) {
     (base=b)->SetParent(this);
@@ -79,6 +99,11 @@ void ArrayAccess::PrintChildren(int indentLevel) {
     base->Print(indentLevel+1);
     subscript->Print(indentLevel+1, "(subscript) ");
   }
+
+void ArrayAccess::Check() {
+    base->Check();
+    subscript->Check();
+}
 
 FieldAccess::FieldAccess(Expr *b, Identifier *f)
   : LValue(b? Join(b->GetLocation(), f->GetLocation()) : *f->GetLocation()) {
@@ -94,6 +119,11 @@ FieldAccess::FieldAccess(Expr *b, Identifier *f)
     field->Print(indentLevel+1);
   }
 
+void FieldAccess::Check() {
+    if (base) base->Check();
+    field->Check();
+}
+
 Call::Call(yyltype loc, Expr *b, Identifier *f, List<Expr*> *a) : Expr(loc)  {
     Assert(f != NULL && a != NULL); // b can be be NULL (just means no explicit base)
     base = b;
@@ -108,6 +138,20 @@ Call::Call(yyltype loc, Expr *b, Identifier *f, List<Expr*> *a) : Expr(loc)  {
     actuals->PrintAll(indentLevel+1, "(actuals) ");
   }
 
+void Call::Check() {
+    Decl *d;
+    if (base) {
+        // base has type Expr *.
+        base->Check();
+    }
+
+    // must check the base expr's class type, and find in that class.
+    //d = symtab->Lookup(field);
+    //if (d == NULL) {
+    //    ReportError::IdentifierNotDeclared(field, LookingForFunction);
+    //}
+    actuals->CheckAll();
+}
 
 NewExpr::NewExpr(yyltype loc, NamedType *c) : Expr(loc) {
   Assert(c != NULL);
@@ -116,6 +160,10 @@ NewExpr::NewExpr(yyltype loc, NamedType *c) : Expr(loc) {
 
 void NewExpr::PrintChildren(int indentLevel) {
     cType->Print(indentLevel+1);
+}
+
+void NewExpr::Check() {
+    cType->Check();
 }
 
 NewArrayExpr::NewArrayExpr(yyltype loc, Expr *sz, Type *et) : Expr(loc) {
@@ -129,6 +177,11 @@ void NewArrayExpr::PrintChildren(int indentLevel) {
     elemType->Print(indentLevel+1);
 }
 
+void NewArrayExpr::Check() {
+    size->Check();
+    elemType->Check();
+}
+
 PostfixExpr::PostfixExpr(LValue *lv, Operator *o)
     : Expr(Join(lv->GetLocation(), o->GetLocation())) {
     Assert(lv != NULL && o != NULL);
@@ -139,5 +192,10 @@ PostfixExpr::PostfixExpr(LValue *lv, Operator *o)
 void PostfixExpr::PrintChildren(int indentLevel) {
     lvalue->Print(indentLevel+1);
     op->Print(indentLevel+1);
+}
+
+void PostfixExpr::Check() {
+    lvalue->Check();
+    op->Check();
 }
 

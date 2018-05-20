@@ -7,6 +7,7 @@
 #include "ast_decl.h"
 #include <string.h> // strdup
 #include <stdio.h>  // printf
+#include "errors.h"
 
 Node::Node(yyltype loc) {
     location = new yyltype(loc);
@@ -44,5 +45,18 @@ Identifier::Identifier(yyltype loc, const char *n) : Node(loc) {
 
 void Identifier::PrintChildren(int indentLevel) {
     printf("%s", name);
+}
+
+void Identifier::Check() {
+    Decl *d = symtab->Lookup(this);
+    if (d == NULL) {
+        ReportError::IdentifierNotDeclared(this, LookingForVariable);
+    }
+}
+
+bool Identifier::IsEquivalentTo(Identifier *other) {
+    bool eq = false;
+    if (!strcmp(name, other->GetIdName())) eq = true;
+    return eq;
 }
 
