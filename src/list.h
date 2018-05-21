@@ -89,6 +89,10 @@ template<class Element> class List {
     void CheckAll(checkT c)
         { for (int i = 0; i < NumElements(); i++)
              Nth(i)->Check(c); }
+        // Emit TAC in code generation phase.
+    void EmitAll()
+        { for (int i = 0; i < NumElements(); i++)
+            Nth(i)->Emit(); }
 };
 
 #endif

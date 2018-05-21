@@ -11,6 +11,7 @@
 
 void EmptyExpr::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void EmptyExpr::Check(checkT c) {
@@ -25,6 +26,7 @@ IntConstant::IntConstant(yyltype loc, int val) : Expr(loc) {
 void IntConstant::PrintChildren(int indentLevel) {
     printf("%d", value);
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void IntConstant::Check(checkT c) {
@@ -33,12 +35,17 @@ void IntConstant::Check(checkT c) {
     }
 }
 
+void IntConstant::Emit() {
+    emit_loc = CG->GenLoadConstant(value);
+}
+
 DoubleConstant::DoubleConstant(yyltype loc, double val) : Expr(loc) {
     value = val;
 }
 void DoubleConstant::PrintChildren(int indentLevel) {
     printf("%g", value);
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void DoubleConstant::Check(checkT c) {
@@ -47,18 +54,29 @@ void DoubleConstant::Check(checkT c) {
     }
 }
 
+void DoubleConstant::Emit() {
+    ReportError::Formatted(this->GetLocation(),
+            "Double is not supported by compiler back end yet.");
+    Assert(0);
+}
+
 BoolConstant::BoolConstant(yyltype loc, bool val) : Expr(loc) {
     value = val;
 }
 void BoolConstant::PrintChildren(int indentLevel) {
     printf("%s", value ? "true" : "false");
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void BoolConstant::Check(checkT c) {
     if (c == E_CheckDecl) {
         expr_type = Type::boolType;
     }
+}
+
+void BoolConstant::Emit() {
+    emit_loc = CG->GenLoadConstant(value ? 1 : 0);
 }
 
 StringConstant::StringConstant(yyltype loc, const char *val) : Expr(loc) {
@@ -68,6 +86,7 @@ StringConstant::StringConstant(yyltype loc, const char *val) : Expr(loc) {
 void StringConstant::PrintChildren(int indentLevel) {
     printf("%s",value);
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void StringConstant::Check(checkT c) {
@@ -76,14 +95,23 @@ void StringConstant::Check(checkT c) {
     }
 }
 
+void StringConstant::Emit() {
+    emit_loc = CG->GenLoadConstant(value);
+}
+
 void NullConstant::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void NullConstant::Check(checkT c) {
     if (c == E_CheckDecl) {
         expr_type = Type::nullType;
     }
+}
+
+void NullConstant::Emit() {
+    emit_loc = CG->GenLoadConstant(0);
 }
 
 Operator::Operator(yyltype loc, const char *tok) : Node(loc) {
@@ -113,6 +141,7 @@ CompoundExpr::CompoundExpr(Operator *o, Expr *r)
 
 void CompoundExpr::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     if (left) left->Print(indentLevel+1);
     op->Print(indentLevel+1);
     right->Print(indentLevel+1);
@@ -165,6 +194,14 @@ void ArithmeticExpr::Check(checkT c) {
     }
 }
 
+void ArithmeticExpr::Emit() {
+    if (left) left->Emit();
+    right->Emit();
+
+    Location *l = left ? left->GetEmitLocDeref() : CG->GenLoadConstant(0);
+    emit_loc = CG->GenBinaryOp(op->GetOpStr(), l, right->GetEmitLocDeref());
+}
+
 void RelationalExpr::CheckType() {
     left->Check(E_CheckType);
     op->Check(E_CheckType);
@@ -197,6 +234,14 @@ void RelationalExpr::Check(checkT c) {
     }
 }
 
+void RelationalExpr::Emit() {
+    left->Emit();
+    right->Emit();
+
+    emit_loc = CG->GenBinaryOp(op->GetOpStr(), left->GetEmitLocDeref(),
+            right->GetEmitLocDeref());
+}
+
 void EqualityExpr::CheckType() {
     left->Check(E_CheckType);
     op->Check(E_CheckType);
@@ -225,6 +270,32 @@ void EqualityExpr::Check(checkT c) {
         if (left) left->Check(c);
         op->Check(c);
         right->Check(c);
+    }
+}
+
+void EqualityExpr::Emit() {
+    left->Emit();
+    right->Emit();
+
+    Type *tl = left->GetType();
+    Type *tr = right->GetType();
+
+    if (tl == tr && (tl == Type::intType || tl == Type::boolType)) {
+        emit_loc = CG->GenBinaryOp(op->GetOpStr(), left->GetEmitLocDeref(),
+                right->GetEmitLocDeref());
+    } else if (tl == tr && tl == Type::stringType) {
+        emit_loc = CG->GenBuiltInCall(StringEqual, left->GetEmitLocDeref(),
+                right->GetEmitLocDeref());
+        if (!strcmp(op->GetOpStr(), "!=")) {
+            // for s1 != s2, generate s1 == s2, then generate logical not.
+            emit_loc = CG->GenBinaryOp("==", CG->GenLoadConstant(0),
+                emit_loc);
+        }
+    } else {
+        // array? class? interface?
+        // just compare the reference.
+        emit_loc = CG->GenBinaryOp(op->GetOpStr(), left->GetEmitLocDeref(),
+                right->GetEmitLocDeref());
     }
 }
 
@@ -268,6 +339,20 @@ void LogicalExpr::Check(checkT c) {
     }
 }
 
+void LogicalExpr::Emit() {
+    if (left) left->Emit();
+    right->Emit();
+
+    if (left) {
+        emit_loc = CG->GenBinaryOp(op->GetOpStr(), left->GetEmitLocDeref(),
+                right->GetEmitLocDeref());
+    } else {
+        // use 0 == bool_var to compute !bool_var.
+        emit_loc = CG->GenBinaryOp("==", CG->GenLoadConstant(0),
+                right->GetEmitLocDeref());
+    }
+}
+
 void AssignExpr::CheckType() {
     left->Check(E_CheckType);
     op->Check(E_CheckType);
@@ -296,6 +381,24 @@ void AssignExpr::Check(checkT c) {
     }
 }
 
+void AssignExpr::Emit() {
+    right->Emit();
+    left->Emit();
+    Location *r = right->GetEmitLocDeref();
+    Location *l = left->GetEmitLoc();
+    if (r && l) {
+        // base can be this or class instances.
+        if (l->GetBase() != NULL) {
+            CG->GenStore(l->GetBase(), r, l->GetOffset());
+        } else if (left->IsArrayAccessRef()) {
+            CG->GenStore(l, r);
+        } else {
+            CG->GenAssign(l, r);
+        }
+        emit_loc = left->GetEmitLocDeref();
+    }
+}
+
 void This::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
 }
@@ -317,6 +420,10 @@ void This::Check(checkT c) {
     }
 }
 
+void This::Emit() {
+    emit_loc = CG->ThisPtr;
+}
+
 ArrayAccess::ArrayAccess(yyltype loc, Expr *b, Expr *s) : LValue(loc) {
     (base=b)->SetParent(this);
     (subscript=s)->SetParent(this);
@@ -324,6 +431,7 @@ ArrayAccess::ArrayAccess(yyltype loc, Expr *b, Expr *s) : LValue(loc) {
 
 void ArrayAccess::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     base->Print(indentLevel+1);
     subscript->Print(indentLevel+1, "(subscript) ");
 }
@@ -365,6 +473,36 @@ void ArrayAccess::Check(checkT c) {
     }
 }
 
+void ArrayAccess::Emit() {
+    base->Emit();
+    subscript->Emit();
+    Location *t0 = subscript->GetEmitLocDeref();
+
+    Location *t1 = CG->GenLoadConstant(0);
+    Location *t2 = CG->GenBinaryOp("<", t0, t1);
+    Location *t3 = base->GetEmitLocDeref();
+    Location *t4 = CG->GenLoad(t3, -4);
+    Location *t5 = CG->GenBinaryOp("<", t0, t4);
+    Location *t6 = CG->GenBinaryOp("==", t5, t1);
+    Location *t7 = CG->GenBinaryOp("||", t2, t6);
+    const char *l = CG->NewLabel();
+    CG->GenIfZ(t7, l);
+    Location *t8 = CG->GenLoadConstant(err_arr_out_of_bounds);
+    CG->GenBuiltInCall(PrintString, t8);
+    CG->GenBuiltInCall(Halt);
+    CG->GenLabel(l);
+
+    Location *t9 = CG->GenLoadConstant(expr_type->GetTypeSize());
+    Location *t10 = CG->GenBinaryOp("*", t9, t0);
+    Location *t11 = CG->GenBinaryOp("+", t3, t10);
+    emit_loc = t11;
+}
+
+Location * ArrayAccess::GetEmitLocDeref() {
+    Location *t = CG->GenLoad(emit_loc, 0);
+    return t;
+}
+
 FieldAccess::FieldAccess(Expr *b, Identifier *f)
   : LValue(b? Join(b->GetLocation(), f->GetLocation()) : *f->GetLocation()) {
     Assert(f != NULL); // b can be be NULL (just means no explicit base)
@@ -375,6 +513,7 @@ FieldAccess::FieldAccess(Expr *b, Identifier *f)
 
 void FieldAccess::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     if (base) base->Print(indentLevel+1);
     field->Print(indentLevel+1);
 }
@@ -466,6 +605,26 @@ void FieldAccess::Check(checkT c) {
     }
 }
 
+void FieldAccess::Emit() {
+    if (base) base->Emit();
+    field->Emit();
+    emit_loc = field->GetEmitLocDeref();
+
+    // can access a var member in a class scope, so set the base.
+    if (base)
+        emit_loc = new Location(fpRelative, emit_loc->GetOffset(),
+                emit_loc->GetName(), base->GetEmitLocDeref());
+}
+
+Location * FieldAccess::GetEmitLocDeref() {
+    Location *t = emit_loc;
+    if (t->GetBase() != NULL) {
+        // this or some class instances.
+        t = CG->GenLoad(t->GetBase(), t->GetOffset());
+    }
+    return t;
+}
+
 Call::Call(yyltype loc, Expr *b, Identifier *f, List<Expr*> *a) : Expr(loc)  {
     Assert(f != NULL && a != NULL); // b can be be NULL (just means no explicit base)
     base = b;
@@ -476,6 +635,7 @@ Call::Call(yyltype loc, Expr *b, Identifier *f, List<Expr*> *a) : Expr(loc)  {
 
 void Call::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     if (base) base->Print(indentLevel+1);
     field->Print(indentLevel+1);
     actuals->PrintAll(indentLevel+1, "(actuals) ");
@@ -569,6 +729,65 @@ void Call::Check(checkT c) {
     }
 }
 
+void Call::Emit() {
+    PrintDebug("tac+", "Emit Call %s.", field->GetIdName());
+    // TODO: in class scope, methon without base should be ACall.
+
+    if (base) base->Emit();
+    field->Emit();
+    actuals->EmitAll();
+
+    // deal with array.length().
+    if (base && base->GetType()->IsArrayType() &&
+            !strcmp(field->GetIdName(), "length")) {
+        Location *t0 = base->GetEmitLocDeref();
+        Location *t1 = CG->GenLoad(t0, -4);
+        emit_loc = t1;
+        return;
+    }
+
+    FnDecl *fn = dynamic_cast<FnDecl*>(field->GetDecl());
+    Assert(fn);
+    bool is_ACall = (base != NULL) || (fn->IsClassMember());
+
+    // get VTable entry.
+    Location *this_loc;
+    if (base) {
+        this_loc = base->GetEmitLocDeref(); // VTable entry.
+    } else if (fn->IsClassMember()) {
+        this_loc = CG->ThisPtr; // in a class scope.
+    }
+
+    Location *t;
+    if (is_ACall) {
+        t = CG->GenLoad(this_loc, 0);
+        t = CG->GenLoad(t, fn->GetVTableOffset());
+    }
+
+    // PushParam
+    for (int i = actuals->NumElements() - 1; i >= 0; i--) {
+        Location *l = actuals->Nth(i)->GetEmitLocDeref();
+        CG->GenPushParam(l);
+    }
+
+    // generate call.
+    if (is_ACall) {
+        // Push this.
+        CG->GenPushParam(this_loc);
+        // ACall
+        emit_loc = CG->GenACall(t, fn->HasReturnValue());
+        // PopParams
+        CG->GenPopParams(actuals->NumElements() * 4 + 4);
+    } else {
+        // LCall
+        field->AddPrefix("_"); // main?
+        emit_loc = CG->GenLCall(field->GetIdName(),
+                expr_type != Type::voidType);
+        // PopParams
+        CG->GenPopParams(actuals->NumElements() * 4);
+    }
+}
+
 NewExpr::NewExpr(yyltype loc, NamedType *c) : Expr(loc) {
     Assert(c != NULL);
     (cType=c)->SetParent(this);
@@ -576,6 +795,7 @@ NewExpr::NewExpr(yyltype loc, NamedType *c) : Expr(loc) {
 
 void NewExpr::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     cType->Print(indentLevel+1);
 }
 
@@ -602,6 +822,16 @@ void NewExpr::Check(checkT c) {
     }
 }
 
+void NewExpr::Emit() {
+    ClassDecl *d = dynamic_cast<ClassDecl*>(cType->GetId()->GetDecl());
+    Assert(d);
+    int size = d->GetInstanceSize();
+    Location *t = CG->GenLoadConstant(size);
+    emit_loc = CG->GenBuiltInCall(Alloc, t);
+    Location *l = CG->GenLoadLabel(d->GetId()->GetIdName());
+    CG->GenStore(emit_loc, l, 0);
+}
+
 NewArrayExpr::NewArrayExpr(yyltype loc, Expr *sz, Type *et) : Expr(loc) {
     Assert(sz != NULL && et != NULL);
     (size=sz)->SetParent(this);
@@ -610,6 +840,7 @@ NewArrayExpr::NewArrayExpr(yyltype loc, Expr *sz, Type *et) : Expr(loc) {
 
 void NewArrayExpr::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     size->Print(indentLevel+1);
     elemType->Print(indentLevel+1);
 }
@@ -645,16 +876,47 @@ void NewArrayExpr::Check(checkT c) {
     }
 }
 
+void NewArrayExpr::Emit() {
+    size->Emit();
+    Location *t0 = size->GetEmitLocDeref();
+    Location *t1 = CG->GenLoadConstant(0);
+    Location *t2 = CG->GenBinaryOp("<=", t0, t1);
+
+    const char *l = CG->NewLabel();
+    CG->GenIfZ(t2, l);
+    Location *t3 = CG->GenLoadConstant(err_arr_bad_size);
+    CG->GenBuiltInCall(PrintString, t3);
+    CG->GenBuiltInCall(Halt);
+
+    CG->GenLabel(l);
+    Location *t4 = CG->GenLoadConstant(1);
+    Location *t5 = CG->GenBinaryOp("+", t4, t0);
+    Location *t6 = CG->GenLoadConstant(elemType->GetTypeSize());
+    Location *t7 = CG->GenBinaryOp("*", t5, t6);
+    Location *t8 = CG->GenBuiltInCall(Alloc, t7);
+    CG->GenStore(t8, t0);
+    Location *t9 = CG->GenBinaryOp("+", t8, t6);
+    emit_loc = t9;
+}
+
 void ReadIntegerExpr::Check(checkT c) {
     if (c == E_CheckType) {
         expr_type = Type::intType;
     }
 }
 
+void ReadIntegerExpr::Emit() {
+    emit_loc = CG->GenBuiltInCall(ReadInteger);
+}
+
 void ReadLineExpr::Check(checkT c) {
     if (c == E_CheckType) {
         expr_type = Type::stringType;
     }
+}
+
+void ReadLineExpr::Emit() {
+    emit_loc = CG->GenBuiltInCall(ReadLine);
 }
 
 PostfixExpr::PostfixExpr(LValue *lv, Operator *o)
@@ -666,6 +928,7 @@ PostfixExpr::PostfixExpr(LValue *lv, Operator *o)
 
 void PostfixExpr::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     lvalue->Print(indentLevel+1);
     op->Print(indentLevel+1);
 }
@@ -690,5 +953,32 @@ void PostfixExpr::Check(checkT c) {
         lvalue->Check(c);
         op->Check(c);
     }
+}
+
+void PostfixExpr::Emit() {
+    lvalue->Emit();
+    // lvalue can be class var member, array access, or any variables.
+    Location *l1 = lvalue->GetEmitLoc();
+    Location *l2 = lvalue->GetEmitLocDeref();
+
+    // save the original lvalue.
+    Location *t0 = CG->GenTempVar();
+    CG->GenAssign(t0, l2);
+
+    // postfix expr should emit ++ or -- at the end of itself.
+    l2 = CG->GenBinaryOp(strcmp(op->GetOpStr(), "++") ? "-" : "+",
+            l2, CG->GenLoadConstant(1));
+
+    // change the value of lvalue.
+    if (l1->GetBase() != NULL) {
+        CG->GenStore(l1->GetBase(), l2, l1->GetOffset());
+    } else if (lvalue->IsArrayAccessRef()) {
+        CG->GenStore(l1, l2);
+    } else {
+        CG->GenAssign(l1, l2);
+    }
+
+    // the value of postfix expr is its original lvalue.
+    emit_loc = t0;
 }
 

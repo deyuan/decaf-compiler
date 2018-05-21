@@ -6,6 +6,7 @@
 #include "ast_type.h"
 #include "ast_stmt.h"
 #include "errors.h"
+#include "list.h"
 
 
 Decl::Decl(Identifier *n) : Node(*n->GetLocation()) {
@@ -19,10 +20,14 @@ Decl::Decl(Identifier *n) : Node(*n->GetLocation()) {
 VarDecl::VarDecl(Identifier *n, Type *t) : Decl(n) {
     Assert(n != NULL && t != NULL);
     (type=t)->SetParent(this);
+    class_member_ofst = -1;
 }
 
 void VarDecl::PrintChildren(int indentLevel) {
    if (expr_type) std::cout << " <" << expr_type << ">";
+   if (emit_loc) emit_loc->Print();
+   if (class_member_ofst != -1)
+       std::cout << " ~~[Ofst: " << class_member_ofst << "]";
    type->Print(indentLevel+1);
    id->Print(indentLevel+1);
    if (id->GetDecl()) printf(" ........ {def}");
@@ -55,6 +60,33 @@ void VarDecl::Check(checkT c) {
     }
 }
 
+void VarDecl::AssignOffset() {
+    if (this->IsGlobal()) {
+        emit_loc = new Location(gpRelative, CG->GetNextGlobalLoc(),
+                id->GetIdName());
+    }
+}
+
+void VarDecl::AssignMemberOffset(bool inClass, int offset) {
+    class_member_ofst = offset;
+    // set location for var members of class.
+    emit_loc = new Location(fpRelative, offset, id->GetIdName(), CG->ThisPtr);
+}
+
+void VarDecl::Emit() {
+    if (type == Type::doubleType) {
+        ReportError::Formatted(this->GetLocation(),
+                "Double type is not supported by compiler back end yet.");
+        Assert(0);
+    }
+
+    if (!emit_loc) {
+        // some auto variables.
+        emit_loc = new Location(fpRelative, CG->GetNextLocalLoc(),
+                id->GetIdName());
+    }
+}
+
 ClassDecl::ClassDecl(Identifier *n, NamedType *ex, List<NamedType*> *imp, List<Decl*> *m) : Decl(n) {
     // extends can be NULL, impl & mem may be empty lists but cannot be NULL
     Assert(n != NULL && imp != NULL && m != NULL);
@@ -62,10 +94,13 @@ ClassDecl::ClassDecl(Identifier *n, NamedType *ex, List<NamedType*> *imp, List<D
     if (extends) extends->SetParent(this);
     (implements=imp)->SetParentAll(this);
     (members=m)->SetParentAll(this);
+    instance_size = 4;
+    vtable_size = 0;
 }
 
 void ClassDecl::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     id->Print(indentLevel+1);
     if (id->GetDecl()) printf(" ........ {def}");
     if (extends) extends->Print(indentLevel+1, "(extends) ");
@@ -246,6 +281,98 @@ bool ClassDecl::IsChildOf(Decl *other) {
     }
 }
 
+void ClassDecl::AddMembersToList(List<VarDecl*> *vars, List<FnDecl*> *fns) {
+    for (int i = members->NumElements() - 1; i >= 0; i--) {
+        Decl *d = members->Nth(i);
+        if (d->IsVarDecl()) {
+            vars->InsertAt(dynamic_cast<VarDecl*>(d), 0);
+        } else if (d->IsFnDecl()) {
+            fns->InsertAt(dynamic_cast<FnDecl*>(d), 0);
+        }
+    }
+}
+
+void ClassDecl::AssignOffset() {
+    // deal with class inheritance.
+    // add all parents' methods.
+    var_members = new List<VarDecl*>;
+    methods = new List<FnDecl*>;
+    ClassDecl *c = this;
+    while (c) {
+        c->AddMembersToList(var_members, methods);
+        NamedType *t = c->GetExtends();
+        if (!t) break;
+        c = dynamic_cast<ClassDecl*>(t->GetId()->GetDecl());
+    }
+
+    // delete override methods.
+    for (int i = 0; i < methods->NumElements(); i++) {
+        FnDecl *f1 = methods->Nth(i);
+        for (int j = i + 1; j < methods->NumElements(); j++) {
+            FnDecl *f2 = methods->Nth(j);
+            if (!strcmp(f1->GetId()->GetIdName(), f2->GetId()->GetIdName())) {
+                // replace the parent's method with child's method, then the
+                // order of the methods can be compatible with both of them.
+                methods->RemoveAt(i);
+                methods->InsertAt(f2, i);
+                methods->RemoveAt(j);
+                j--;
+            }
+        }
+    }
+
+    PrintDebug("tac+", "Class Methods of %s:", id->GetIdName());
+    for (int i = 0; i < methods->NumElements(); i++) {
+        PrintDebug("tac+", "%s", methods->Nth(i)->GetId()->GetIdName());
+    }
+    PrintDebug("tac+", "Class Vars of %s:", id->GetIdName());
+    for (int i = 0; i < var_members->NumElements(); i++) {
+        PrintDebug("tac+", "%s", var_members->Nth(i)->GetId()->GetIdName());
+    }
+
+    // assign offset for fn members.
+    instance_size = var_members->NumElements() * 4 + 4;
+    vtable_size = methods->NumElements() * 4;
+
+    int var_offset = instance_size;
+    for (int i = members->NumElements() - 1; i >= 0; i--) {
+        Decl *d = members->Nth(i);
+        if (d->IsVarDecl()) {
+            var_offset -= 4;
+            d->AssignMemberOffset(true, var_offset);
+        } else if (d->IsFnDecl()) {
+            // find the right offset.
+            for (int i = 0; i < methods->NumElements(); i++) {
+                FnDecl *f1 = methods->Nth(i);
+                if (!strcmp(f1->GetId()->GetIdName(), d->GetId()->GetIdName()))
+                    d->AssignMemberOffset(true, i * 4);
+            }
+        }
+    }
+}
+
+void ClassDecl::AddPrefixToMethods() {
+    // add prefix to method names.
+    for (int i = 0; i < members->NumElements(); i++) {
+        members->Nth(i)->AddPrefixToMethods();
+    }
+}
+
+void ClassDecl::Emit() {
+    PrintDebug("tac+", "Begin Emitting TAC in ClassDecl.");
+
+    members->EmitAll();
+
+    // Emit VTable.
+    List<const char*> *method_labels = new List<const char*>;
+    for (int i = 0; i < methods->NumElements(); i++) {
+        FnDecl* fn = methods->Nth(i);
+        PrintDebug("tac+", "Insert %s into VTable.", fn->GetId()->GetIdName());
+        method_labels->Append(fn->GetId()->GetIdName());
+    }
+    CG->GenVTable(id->GetIdName(), method_labels);
+}
+
 InterfaceDecl::InterfaceDecl(Identifier *n, List<Decl*> *m) : Decl(n) {
     Assert(n != NULL && m != NULL);
     (members=m)->SetParentAll(this);
@@ -253,6 +380,7 @@ InterfaceDecl::InterfaceDecl(Identifier *n, List<Decl*> *m) : Decl(n) {
 
 void InterfaceDecl::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     id->Print(indentLevel+1);
     if (id->GetDecl()) printf(" ........ {def}");
     members->PrintAll(indentLevel+1);
@@ -285,11 +413,18 @@ void InterfaceDecl::Check(checkT c) {
     }
 }
 
+void InterfaceDecl::Emit() {
+    ReportError::Formatted(this->GetLocation(),
+            "Interface is not supported by compiler back end yet.");
+    Assert(0);
+}
+
 FnDecl::FnDecl(Identifier *n, Type *r, List<VarDecl*> *d) : Decl(n) {
     Assert(n != NULL && r!= NULL && d != NULL);
     (returnType=r)->SetParent(this);
     (formals=d)->SetParentAll(this);
     body = NULL;
+    vtable_ofst = -1;
 }
 
 void FnDecl::SetFunctionBody(Stmt *b) {
@@ -298,6 +433,9 @@ void FnDecl::SetFunctionBody(Stmt *b) {
 
 void FnDecl::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
+    if (vtable_ofst != -1)
+        std::cout << " ~~[VTable: " << vtable_ofst << "]";
     returnType->Print(indentLevel+1, "(return type) ");
     id->Print(indentLevel+1);
     if (id->GetDecl()) printf(" ........ {def}");
@@ -326,6 +464,17 @@ void FnDecl::CheckDecl() {
     formals->CheckAll(E_CheckDecl);
     if (body) body->Check(E_CheckDecl);
     symtab->ExitScope();
+
+    // check the signature of the main function.
+    if (!strcmp(id->GetIdName(), "main")) {
+        if (returnType != Type::voidType) {
+            ReportError::Formatted(this->GetLocation(),
+                    "Return value of 'main' function is expected to be void.");
+        }
+        if (formals->NumElements() != 0) {
+            ReportError::NumArgsMismatch(id, 0, formals->NumElements());
+        }
+    }
 
     expr_type = returnType->GetType();
 }
@@ -368,5 +517,62 @@ bool FnDecl::IsEquivalentTo(Decl *other) {
         }
     }
     return true;
+}
+
+void FnDecl::AddPrefixToMethods() {
+    // add prefix for all functions.
+    // Add prefix to all the function name except the global main.
+    Decl *d = dynamic_cast<Decl*>(this->GetParent());
+    if (d && d->IsClassDecl()) {
+        id->AddPrefix(".");
+        id->AddPrefix(d->GetId()->GetIdName());
+        id->AddPrefix("_");
+    } else if (strcmp(id->GetIdName(), "main")) {
+        id->AddPrefix("_");
+    }
+}
+
+void FnDecl::AssignMemberOffset(bool inClass, int offset) {
+    vtable_ofst = offset;
+}
+
+void FnDecl::Emit() {
+    PrintDebug("tac+", "Begin Emitting TAC in FnDecl.");
+    if (returnType == Type::doubleType) {
+        ReportError::Formatted(this->GetLocation(),
+                "Double type is not supported by compiler back end yet.");
+        Assert(0);
+    }
+
+    Decl *d = dynamic_cast<Decl*>(this->GetParent());
+    CG->GenLabel(id->GetIdName());
+
+    // BeginFunc will reset the FP offset counter.
+    BeginFunc *f = CG->GenBeginFunc();
+
+    // Add 4 to the offset of the 1st param for class member.
+    if (d && d->IsClassDecl()) {
+        CG->GetNextParamLoc();
+    }
+
+    // Generate all the Locations for formals.
+    for (int i = 0; i < formals->NumElements(); i++) {
+        VarDecl *v = formals->Nth(i);
+        if (v->GetType() == Type::doubleType) {
+            ReportError::Formatted(this->GetLocation(),
+                    "Double type is not supported by compiler back end yet.");
+            Assert(0);
+        }
+        Location *l = new Location(fpRelative, CG->GetNextParamLoc(),
+                v->GetId()->GetIdName());
+        v->SetEmitLoc(l);
+    }
+
+    if (body) body->Emit();
+
+    // Backpatch the frame size.
+    f->SetFrameSize(CG->GetFrameSize());
+
+    CG->GenEndFunc();
 }
 

@@ -33,6 +33,7 @@ Type::Type(const char *n) {
 void Type::PrintChildren(int indentLevel) {
     printf("%s", typeName);
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
 }
 
 void Type::Check(checkT c) {
@@ -55,6 +56,7 @@ NamedType::NamedType(Identifier *i) : Type(*i->GetLocation()) {
 
 void NamedType::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     id->Print(indentLevel+1);
 }
 
@@ -124,6 +126,7 @@ ArrayType::ArrayType(yyltype loc, Type *et) : Type(loc) {
 }
 void ArrayType::PrintChildren(int indentLevel) {
     if (expr_type) std::cout << " <" << expr_type << ">";
+    if (emit_loc) emit_loc->Print();
     elemType->Print(indentLevel+1);
 }
 

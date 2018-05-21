@@ -10,6 +10,11 @@
  *
  * pp3: You will need to extend the Stmt classes to implement
  * semantic analysis for rules pertaining to statements.
+ *
+ * pp5: You will need to extend the Stmt classes to implement
+ * code generation for statements.
+ *
+ * Author: Deyuan Guo
  */
 
 
@@ -22,7 +27,6 @@
 class Decl;
 class VarDecl;
 class Expr;
-class SymbolTable;
 
 class Program : public Node
 {
@@ -37,6 +41,9 @@ class Program : public Node
      void BuildST();
      void Check();
      void Check(checkT c) { Check(); }
+
+    // code generation
+    void Emit();
 };
 
 class Stmt : public Node
@@ -59,6 +66,9 @@ class StmtBlock : public Stmt
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 
@@ -74,10 +84,16 @@ class ConditionalStmt : public Stmt
 
 class LoopStmt : public ConditionalStmt
 {
+  protected:
+    const char *end_loop_label;
+
   public:
     LoopStmt(Expr *testExpr, Stmt *body)
             : ConditionalStmt(testExpr, body) {}
     bool IsLoopStmt() { return true; }
+
+    // code generation
+    virtual const char * GetEndLoopLabel() { return end_loop_label; }
 };
 
 class ForStmt : public LoopStmt
@@ -93,6 +109,9 @@ class ForStmt : public LoopStmt
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class WhileStmt : public LoopStmt
@@ -107,6 +126,9 @@ class WhileStmt : public LoopStmt
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class IfStmt : public ConditionalStmt
@@ -122,6 +144,9 @@ class IfStmt : public ConditionalStmt
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class BreakStmt : public Stmt
@@ -130,6 +155,9 @@ class BreakStmt : public Stmt
     BreakStmt(yyltype loc) : Stmt(loc) {}
     const char *GetPrintNameForNode() { return "BreakStmt"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class IntConstant;
@@ -139,6 +167,7 @@ class CaseStmt : public Stmt
   protected:
     IntConstant *value;
     List<Stmt*> *stmts;
+    const char *case_label;
 
   public:
     CaseStmt(IntConstant *v, List<Stmt*> *stmts);
@@ -147,6 +176,12 @@ class CaseStmt : public Stmt
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void Emit();
+    void GenCaseLabel();
+    const char * GetCaseLabel() { return case_label; }
+    IntConstant * GetCaseValue() { return value; }
 };
 
 class SwitchStmt : public Stmt
@@ -154,6 +189,7 @@ class SwitchStmt : public Stmt
   protected:
     Expr *expr;
     List<CaseStmt*> *cases;
+    const char *end_switch_label;
 
   public:
     SwitchStmt(Expr *expr, List<CaseStmt*> *cases);
@@ -162,6 +198,11 @@ class SwitchStmt : public Stmt
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void Emit();
+    bool IsSwitchStmt() { return true; }
+    const char * GetEndSwitchLabel() { return end_switch_label; }
 };
 
 class ReturnStmt : public Stmt
@@ -175,6 +216,9 @@ class ReturnStmt : public Stmt
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class PrintStmt : public Stmt
@@ -188,6 +232,9 @@ class PrintStmt : public Stmt
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 

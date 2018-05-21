@@ -7,6 +7,11 @@
  *
  * pp3: You will need to extend the Expr classes to implement 
  * semantic analysis for rules pertaining to expressions.
+ *
+ * pp5: You will need to extend the Expr classes to implement
+ * code generation for expressions.
+ *
+ * Author: Deyuan Guo
  */
 
 
@@ -27,6 +32,11 @@ class Expr : public Stmt
   public:
     Expr(yyltype loc) : Stmt(loc) { expr_type = NULL; }
     Expr() : Stmt() { expr_type = NULL; }
+
+    // code generation
+    virtual Location * GetEmitLocDeref() { return GetEmitLoc(); }
+    virtual bool IsArrayAccessRef() { return false; }
+    virtual bool IsEmptyExpr() { return false; }
 };
 
 /* This node type is used for those places where an expression is optional.
@@ -38,6 +48,9 @@ class EmptyExpr : public Expr
     const char *GetPrintNameForNode() { return "Empty"; }
     void PrintChildren(int indentLevel);
     void Check(checkT c);
+
+    // code generation
+    bool IsEmptyExpr() { return true; }
 };
 
 class IntConstant : public Expr
@@ -51,6 +64,9 @@ class IntConstant : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class DoubleConstant : public Expr
@@ -64,6 +80,9 @@ class DoubleConstant : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class BoolConstant : public Expr
@@ -77,6 +96,9 @@ class BoolConstant : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class StringConstant : public Expr
@@ -90,6 +112,9 @@ class StringConstant : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class NullConstant: public Expr
@@ -99,6 +124,9 @@ class NullConstant: public Expr
     const char *GetPrintNameForNode() { return "NullConstant"; }
     void PrintChildren(int indentLevel);
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class Operator : public Node
@@ -139,6 +167,9 @@ class ArithmeticExpr : public CompoundExpr
     ArithmeticExpr(Operator *op, Expr *rhs) : CompoundExpr(op,rhs) {}
     const char *GetPrintNameForNode() { return "ArithmeticExpr"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class RelationalExpr : public CompoundExpr
@@ -150,6 +181,9 @@ class RelationalExpr : public CompoundExpr
     RelationalExpr(Expr *lhs, Operator *op, Expr *rhs) : CompoundExpr(lhs,op,rhs) {}
     const char *GetPrintNameForNode() { return "RelationalExpr"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class EqualityExpr : public CompoundExpr
@@ -160,7 +194,11 @@ class EqualityExpr : public CompoundExpr
   public:
     EqualityExpr(Expr *lhs, Operator *op, Expr *rhs) : CompoundExpr(lhs,op,rhs) {}
     const char *GetPrintNameForNode() { return "EqualityExpr"; }
-    void Check(checkT c);};
+    void Check(checkT c);
+
+    // code generation
+    void Emit();
+};
 
 class LogicalExpr : public CompoundExpr
 {
@@ -172,6 +210,9 @@ class LogicalExpr : public CompoundExpr
     LogicalExpr(Operator *op, Expr *rhs) : CompoundExpr(op,rhs) {}
     const char *GetPrintNameForNode() { return "LogicalExpr"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class AssignExpr : public CompoundExpr
@@ -183,6 +224,9 @@ class AssignExpr : public CompoundExpr
     AssignExpr(Expr *lhs, Operator *op, Expr *rhs) : CompoundExpr(lhs,op,rhs) {}
     const char *GetPrintNameForNode() { return "AssignExpr"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class LValue : public Expr
@@ -201,6 +245,9 @@ class This : public Expr
     const char *GetPrintNameForNode() { return "This"; }
     void PrintChildren(int indentLevel);
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class ArrayAccess : public LValue
@@ -215,6 +262,11 @@ class ArrayAccess : public LValue
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
+    bool IsArrayAccessRef() { return true; }
+    Location * GetEmitLocDeref();
 };
 
 /* Note that field access is used both for qualified names
@@ -236,6 +288,10 @@ class FieldAccess : public LValue
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
+    Location * GetEmitLocDeref();
 };
 
 /* Like field access, call is used both for qualified base.field()
@@ -258,6 +314,9 @@ class Call : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class NewExpr : public Expr
@@ -273,6 +332,9 @@ class NewExpr : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class NewArrayExpr : public Expr
@@ -288,6 +350,9 @@ class NewArrayExpr : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class ReadIntegerExpr : public Expr
@@ -296,6 +361,9 @@ class ReadIntegerExpr : public Expr
     ReadIntegerExpr(yyltype loc) : Expr(loc) {}
     const char *GetPrintNameForNode() { return "ReadIntegerExpr"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 class ReadLineExpr : public Expr
@@ -304,6 +372,9 @@ class ReadLineExpr : public Expr
     ReadLineExpr(yyltype loc) : Expr (loc) {}
     const char *GetPrintNameForNode() { return "ReadLineExpr"; }
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 
@@ -320,6 +391,9 @@ class PostfixExpr : public Expr
     void PrintChildren(int indentLevel);
 
     void Check(checkT c);
+
+    // code generation
+    void Emit();
 };
 
 #endif

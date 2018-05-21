@@ -7,6 +7,11 @@
  *
  * pp3: You will need to extend the Type classes to implement
  * the type system and rules for type equivalency and compatibility.
+ *
+ * pp5: You will need to extend the Type classes to implement
+ * code generation for types.
+ *
+ * Author: Deyuan Guo
  */
 
 #ifndef _H_ast_type
@@ -47,6 +52,9 @@ class Type : public Node
     void Check(checkT c);
     virtual void Check(checkT c, reasonT r) { Check(c); }
     virtual void SetSelfType() { expr_type = this; }
+
+    // code generation
+    virtual int GetTypeSize() { return 4; }
 };
 
 class NamedType : public Type

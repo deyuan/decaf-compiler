@@ -9,6 +9,9 @@
 #include <stdio.h>  // printf
 #include "errors.h"
 
+// the global code generator class.
+CodeGenerator *CG = new CodeGenerator();
+
 Node::Node(yyltype loc) {
     location = new yyltype(loc);
     parent = NULL;
@@ -67,5 +70,16 @@ bool Identifier::IsEquivalentTo(Identifier *other) {
     bool eq = false;
     if (!strcmp(name, other->GetIdName())) eq = true;
     return eq;
+}
+
+void Identifier::Emit() {
+    if (decl)
+        emit_loc = decl->GetEmitLoc();
+}
+
+void Identifier::AddPrefix(const char *prefix) {
+    char *s = (char *)malloc(strlen(name) + strlen(prefix) + 1);
+    sprintf(s, "%s%s", prefix, name);
+    name = s;
 }
 

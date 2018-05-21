@@ -61,6 +61,50 @@ void Program::Check() {
     if (IsDebugOn("ast+")) { this->Print(0); }
 }
 
+void Program::Emit() {
+    /* pp5: here is where the code generation is kicked off.
+     *      The general idea is perform a tree traversal of the
+     *      entire program, generating instructions as you go.
+     *      Each node can have its own way of translating itself,
+     *      which makes for a great use of inheritance and
+     *      polymorphism in the node classes.
+     */
+
+    // Check if there exists a global main function.
+    bool has_main = false;
+    for (int i = 0; i < decls->NumElements(); i++) {
+        Decl *d = decls->Nth(i);
+        if (d->IsFnDecl()) {
+            if (!strcmp(d->GetId()->GetIdName(), "main")) {
+                has_main = true;
+                break;
+            }
+        }
+    }
+    if (!has_main) {
+        ReportError::NoMainFound();
+        return;
+    }
+
+    PrintDebug("tac+", "Assign offset for class/interface members & global.");
+    // Assign offset for global var, class/interface members.
+    for (int i = 0; i < decls->NumElements(); i++) {
+        decls->Nth(i)->AssignOffset();
+    }
+    // Add prefix for functions.
+    for (int i = 0; i < decls->NumElements(); i++) {
+        decls->Nth(i)->AddPrefixToMethods();
+    }
+    if (IsDebugOn("tac+")) { this->Print(0); }
+
+    PrintDebug("tac+", "Begin Emitting TAC for Program.");
+    decls->EmitAll();
+    if (IsDebugOn("tac+")) { this->Print(0); }
+
+    // Emit the TAC or final MIPS assembly code.
+    CG->DoFinalCodeGen();
+}
+
 StmtBlock::StmtBlock(List<VarDecl*> *d, List<Stmt*> *s) {
     Assert(d != NULL && s != NULL);
     (decls=d)->SetParentAll(this);
@@ -84,6 +128,11 @@ void StmtBlock::Check(checkT c) {
     decls->CheckAll(c);
     stmts->CheckAll(c);
     symtab->ExitScope();
+}
+
+void StmtBlock::Emit() {
+    decls->EmitAll();
+    stmts->EmitAll();
 }
 
 ConditionalStmt::ConditionalStmt(Expr *t, Stmt *b) {
@@ -137,6 +186,24 @@ void ForStmt::Check(checkT c) {
     }
 }
 
+void ForStmt::Emit() {
+    init->Emit();
+
+    const char *l0 = CG->NewLabel();
+    CG->GenLabel(l0);
+    test->Emit();
+    Location *t0 = test->GetEmitLocDeref();
+    const char *l1 = CG->NewLabel();
+    end_loop_label = l1;
+    CG->GenIfZ(t0, l1);
+
+    body->Emit();
+    step->Emit();
+    CG->GenGoto(l0);
+
+    CG->GenLabel(l1);
+}
+
 void WhileStmt::PrintChildren(int indentLevel) {
     test->Print(indentLevel+1, "(test) ");
     body->Print(indentLevel+1, "(body) ");
@@ -168,6 +235,22 @@ void WhileStmt::Check(checkT c) {
             body->Check(c);
             symtab->ExitScope();
     }
+}
+
+void WhileStmt::Emit() {
+    const char *l0 = CG->NewLabel();
+    CG->GenLabel(l0);
+
+    test->Emit();
+    Location *t0 = test->GetEmitLocDeref();
+    const char *l1 = CG->NewLabel();
+    end_loop_label = l1;
+    CG->GenIfZ(t0, l1);
+
+    body->Emit();
+    CG->GenGoto(l0);
+
+    CG->GenLabel(l1);
 }
 
 IfStmt::IfStmt(Expr *t, Stmt *tb, Stmt *eb): ConditionalStmt(t, tb) {
@@ -225,6 +308,21 @@ void IfStmt::Check(checkT c) {
     }
 }
 
+void IfStmt::Emit() {
+    test->Emit();
+    Location *t0 = test->GetEmitLocDeref();
+    const char *l0 = CG->NewLabel();
+    CG->GenIfZ(t0, l0);
+
+    body->Emit();
+    const char *l1 = CG->NewLabel();
+    CG->GenGoto(l1);
+
+    CG->GenLabel(l0);
+    if (elseBody) elseBody->Emit();
+    CG->GenLabel(l1);
+}
+
 void BreakStmt::Check(checkT c) {
     if (c == E_CheckType) {
         Node *n = this;
@@ -236,11 +334,31 @@ void BreakStmt::Check(checkT c) {
     }
 }
 
+void BreakStmt::Emit() {
+    // break can jump out of a while, for, or a switch.
+    Node *n = this;
+    while (n->GetParent()) {
+        if (n->IsLoopStmt()) {
+            const char *l = dynamic_cast<LoopStmt*>(n)->GetEndLoopLabel();
+            PrintDebug("tac+", "endloop label %s.", l);
+            CG->GenGoto(l);
+            return;
+        } else if (n->IsSwitchStmt()) {
+            const char *l = dynamic_cast<SwitchStmt*>(n)->GetEndSwitchLabel();
+            PrintDebug("tac+", "endswitch label %s.", l);
+            CG->GenGoto(l);
+            return;
+        }
+        n = n->GetParent();
+    }
+}
+
 CaseStmt::CaseStmt(IntConstant *v, List<Stmt*> *s) {
     Assert(s != NULL);
     value = v;
     if (value) value->SetParent(this);
     (stmts=s)->SetParentAll(this);
+    case_label = NULL;
 }
 
 void CaseStmt::PrintChildren(int indentLevel) {
@@ -261,10 +379,20 @@ void CaseStmt::Check(checkT c) {
     symtab->ExitScope();
 }
 
+void CaseStmt::GenCaseLabel() {
+    case_label = CG->NewLabel();
+}
+
+void CaseStmt::Emit() {
+    CG->GenLabel(case_label);
+    stmts->EmitAll();
+}
+
 SwitchStmt::SwitchStmt(Expr *e, List<CaseStmt*> *c) {
     Assert(e != NULL && c != NULL);
     (expr=e)->SetParent(this);
     (cases=c)->SetParentAll(this);
+    end_switch_label = NULL;
 }
 
 void SwitchStmt::PrintChildren(int indentLevel) {
@@ -283,6 +411,47 @@ void SwitchStmt::Check(checkT c) {
     symtab->EnterScope();
     cases->CheckAll(c);
     symtab->ExitScope();
+}
+
+void SwitchStmt::Emit() {
+    expr->Emit();
+
+    // the end_switch_label is used by break.
+    end_switch_label = CG->NewLabel();
+
+    Location *switch_value = expr->GetEmitLocDeref();
+
+    // here use a series of if instead of an address table.
+    // case statement is optional, default statement is optional.
+    // default statement is always at the end of the cases list.
+    for (int i = 0; i < cases->NumElements(); i++) {
+        CaseStmt *c = cases->Nth(i);
+
+        // get case label.
+        c->GenCaseLabel();
+        const char *cl = c->GetCaseLabel();
+
+        // get case value.
+        IntConstant *cv = c->GetCaseValue();
+
+        // gen branches.
+        if (cv) {
+            // case
+            cv->Emit();
+            Location *cvl = cv->GetEmitLocDeref();
+            Location *t = CG->GenBinaryOp("!=", switch_value, cvl);
+            CG->GenIfZ(t, cl);
+        } else {
+            // default
+            CG->GenGoto(cl);
+        }
+    }
+
+    // emit case statements.
+    cases->EmitAll();
+
+    // gen end_switch_label.
+    CG->GenLabel(end_switch_label);
 }
 
 ReturnStmt::ReturnStmt(yyltype loc, Expr *e) : Stmt(loc) {
@@ -313,6 +482,15 @@ void ReturnStmt::Check(checkT c) {
     }
 }
 
+void ReturnStmt::Emit() {
+    if (expr->IsEmptyExpr()) {
+        CG->GenReturn();
+    } else {
+        expr->Emit();
+        CG->GenReturn(expr->GetEmitLocDeref());
+    }
+}
+
 PrintStmt::PrintStmt(List<Expr*> *a) {
     Assert(a != NULL);
     (args=a)->SetParentAll(this);
@@ -332,6 +510,25 @@ void PrintStmt::Check(checkT c) {
                 ReportError::PrintArgMismatch(args->Nth(i), i + 1, t);
             }
         }
+    }
+}
+
+void PrintStmt::Emit() {
+    for (int i = 0; i < args->NumElements(); i++) {
+        args->Nth(i)->Emit();
+        // BuiltInCall
+        Type *t = args->Nth(i)->GetType();
+        BuiltIn f;
+        if (t == Type::intType) {
+            f = PrintInt;
+        } else if (t == Type::stringType) {
+            f = PrintString;
+        } else {
+            f = PrintBool;
+        }
+        Location *l = args->Nth(i)->GetEmitLocDeref();
+        Assert(l);
+        CG->GenBuiltInCall(f, l);
     }
 }
 

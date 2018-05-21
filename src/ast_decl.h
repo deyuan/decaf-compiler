@@ -8,6 +8,11 @@
  * pp3: You will need to extend the Decl classes to implement
  * semantic processing including detection of declaration conflicts
  * and managing scoping issues.
+ *
+ * pp5: You will need to extend the Decl classes to implement
+ * code generation for declarations.
+ *
+ * Author: Deyuan Guo
  */
 
 #ifndef _H_ast_decl
@@ -15,11 +20,13 @@
 
 #include "ast.h"
 #include "list.h"
+#include "ast_type.h"
 
 class Type;
 class NamedType;
 class Identifier;
 class Stmt;
+class FnDecl;
 
 class Decl : public Node
 {
@@ -39,13 +46,25 @@ class Decl : public Node
     virtual bool IsClassDecl() { return false; }
     virtual bool IsInterfaceDecl() { return false; }
     virtual bool IsFnDecl() { return false; }
+
+    // code generation
+    virtual void AssignOffset() {}
+    virtual void AssignMemberOffset(bool inClass, int offset) {}
+    virtual void AddPrefixToMethods() {}
 };
 
 class VarDecl : public Decl
 {
   protected:
     Type *type;
+    bool is_global;
+    int class_member_ofst;
     void CheckDecl();
+    bool IsGlobal() { return this->GetParent()->GetParent() == NULL; }
+    bool IsClassMember() {
+        Decl *d = dynamic_cast<Decl*>(this->GetParent());
+        return d ? d->IsClassDecl() : false;
+    }
 
   public:
     VarDecl(Identifier *name, Type *type);
@@ -57,6 +76,12 @@ class VarDecl : public Decl
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void AssignOffset();
+    void AssignMemberOffset(bool inClass, int offset);
+    void Emit();
+    void SetEmitLoc(Location *l) { emit_loc = l; }
 };
 
 class ClassDecl : public Decl
@@ -65,6 +90,10 @@ class ClassDecl : public Decl
     List<Decl*> *members;
     NamedType *extends;
     List<NamedType*> *implements;
+    int instance_size;
+    int vtable_size;
+    List<VarDecl*> *var_members;
+    List<FnDecl*> *methods;
     void CheckDecl();
     void CheckInherit();
 
@@ -79,6 +108,14 @@ class ClassDecl : public Decl
     void Check(checkT c);
     bool IsChildOf(Decl *other);
     NamedType * GetExtends() { return extends; }
+
+    // code generation
+    void AssignOffset();
+    void Emit();
+    int GetInstanceSize() { return instance_size; }
+    int GetVTableSize() { return vtable_size; }
+    void AddMembersToList(List<VarDecl*> *vars, List<FnDecl*> *fns);
+    void AddPrefixToMethods();
 };
 
 class InterfaceDecl : public Decl
@@ -96,6 +133,9 @@ class InterfaceDecl : public Decl
     void BuildST();
     void Check(checkT c);
     List<Decl*> * GetMembers() { return members; }
+
+    // code generation
+    void Emit();
 };
 
 class FnDecl : public Decl
@@ -104,6 +144,7 @@ class FnDecl : public Decl
     List<VarDecl*> *formals;
     Type *returnType;
     Stmt *body;
+    int vtable_ofst;
     void CheckDecl();
 
   public:
@@ -120,6 +161,17 @@ class FnDecl : public Decl
 
     void BuildST();
     void Check(checkT c);
+
+    // code generation
+    void AddPrefixToMethods();
+    void AssignMemberOffset(bool inClass, int offset);
+    void Emit();
+    int GetVTableOffset() { return vtable_ofst; }
+    bool HasReturnValue() { return returnType != Type::voidType; }
+    bool IsClassMember() {
+        Decl *d = dynamic_cast<Decl*>(this->GetParent());
+        return d ? d->IsClassDecl() : false;
+    }
 };
 
 #endif

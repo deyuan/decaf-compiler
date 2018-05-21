@@ -30,7 +30,13 @@
  * node classes. Your semantic analyzer should do an inorder walk on the
  * parse tree, and when visiting each node, verify the particular
  * semantic rules that apply to that construct.
-
+ *
+ * Code generation: For pp5 you are adding "Emit" behavior to the ast
+ * node classes. Your code generator should do an postorder walk on the
+ * parse tree, and when visiting each node, emitting the necessary
+ * instructions for that construct.
+ *
+ * Author: Deyuan Guo
  */
 
 #ifndef _H_ast
@@ -41,6 +47,10 @@
 #include <iostream>
 #include "symtab.h"
 #include "errors.h"
+#include "codegen.h"
+
+// the global code generator class.
+extern CodeGenerator *CG;
 
 class Node
 {
@@ -48,6 +58,7 @@ class Node
     yyltype *location;
     Node *parent;
     Type *expr_type; // link to the type of each node (not for stmt)
+    Location *emit_loc;
 
   public:
     Node(yyltype loc);
@@ -68,7 +79,12 @@ class Node
     virtual void Check(checkT c) {}
     virtual Type * GetType() { return expr_type; }
     virtual bool IsLoopStmt() { return false; }
+    virtual bool IsSwitchStmt() { return false; }
     virtual bool IsCaseStmt() { return false; }
+
+    // code generation
+    virtual void Emit() {}
+    virtual Location * GetEmitLoc() { return emit_loc; }
 };
 
 
@@ -91,6 +107,11 @@ class Identifier : public Node
     bool IsEquivalentTo(Identifier *other);
     void SetDecl(Decl *d) { decl = d; }
     Decl * GetDecl() { return decl; }
+
+    // code generation
+    void Emit();
+    void AddPrefix(const char *prefix);
+    Location * GetEmitLocDeref() { return GetEmitLoc(); }
 };
 
 
