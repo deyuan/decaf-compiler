@@ -9,6 +9,50 @@ This is a compiler project for the Decaf programming language. Decaf is a Java-l
 * Three-address code intermediate representation
 * MIPS as the target architecture
 
+## Usage
+Before building the Decaf compiler, please make sure `g++`, `flex` and `bison` commands are avilable. Then we can run `make` in `src` directory to build the Decaf compiler `dcc`. The `dcc` compiler reads a Decaf source file from `stdin` and outputs MIPS assembly to `stdout`.
+```
+cd src
+make
+./dcc < ../tests/4_codegen/tictactoe.decaf > tictactoe.asm
+```
+Under the `src` directory, there is a `run` script to compile a Decaf source file and launch the spim simulator. Please make sure `spim` command is available before executing the script.
+```
+./run ../tests/4_codegen/tictactoe.decaf
+```
+The Decaf compiler also supports a debugging option `-d` with arguments such as `ast`, `st` and `tac` to dump abstract syntax tree, symbol table and three-address code. Usage examples are as follows.
+```
+./dcc -d ast < ../tests/4_codegen/tictactoe.decaf > debug.txt
+./dcc -d ast st tac < ../tests/4_codegen/tictactoe.decaf > debug.txt
+```
+
+## Source Code Structure
+* src/Makefile
+* src/ast.h, ast.cc
+* src/ast_decl.h, ast_decl.cc
+* src/ast_expr.h, ast_expr.cc
+* src/ast_stmt.h, ast_stmt.cc
+* src/ast_type.h, ast_type.cc
+* src/codegen.h, codegen.cc
+* src/defs.asm
+* src/errors.h, errors.cc
+* src/hashtable.h, hashtable.cc
+* src/list.h
+* src/location.h
+* src/main.cc
+* src/mips.h, mips.cc
+* src/parser.h, parser.y
+* src/run
+* src/scanner.h, scanner.l
+* src/symtab.h, symtab.cc
+* src/tac.h, tac.cc
+* src/trap.handler
+* src/utility.h, utility.cc
+* tests/1_ast
+* tests/2_semantic
+* tests/3_semantic
+* tests/4_codegen
+
 ## References
 * The Decaf Language
   > https://parasol.tamu.edu/courses/decaf/students/decafOverview.pdf
