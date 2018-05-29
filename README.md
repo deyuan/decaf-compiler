@@ -4,10 +4,12 @@
 This is a compiler project for the Decaf programming language. Decaf is a Java-like object-oriented programming language. The compiler uses Flex and Binson to do lexical and syntax analysis. After building an abstract syntax tree (AST), the compiler performs multiple passes of semantic analysis to support features of the Decaf language. Once all error checking is done, the compiler generates three-address code (TAC) as intermediate representation (IR), and emits MIPS assembly code. The MIPS assembly code can be executed with the SPIM simulator.
 
 ## Festures of the Decaf compiler
-* Lexical and syntax analysis using Flex and Bison
-* Semantic analysis based on Abstract syntax tree
-* Three-address code intermediate representation
-* MIPS as the target architecture
+* Perform lexical and syntax analysis and build AST
+* Build a hash-table-based symbol table
+* Perform multi-pass semantic analysis on AST including scope analysis and inheritance analysis
+* Create TAC as IR
+* Create VTable to support dynamically dispatching of virtual methods
+* Emit MIPS assembly that can be executed by SPIM simulator
 
 ## Usage
 Before building the Decaf compiler, please make sure `g++`, `flex` and `bison` commands are avilable. Then we can run `make` in `src` directory to build the Decaf compiler `dcc`. The `dcc` compiler reads a Decaf source file from `stdin` and outputs MIPS assembly to `stdout`.
@@ -20,11 +22,34 @@ Under the `src` directory, there is a `run` script to compile a Decaf source fil
 ```
 ./run ../tests/4_codegen/tictactoe.decaf
 ```
-The Decaf compiler also supports a debugging option `-d` with arguments such as `ast`, `st` and `tac` to dump abstract syntax tree, symbol table and three-address code. Usage examples are as follows.
+The Decaf compiler also supports a debugging option `-d` with arguments such as `ast`, `st` and `tac` to dump abstract syntax tree, symbol table and three-address code. Usage examples are as follows. There are a few other verbose debugging switches including `lex`, `parser`, `ast+`, `sttrace` and `tac+`.
 ```
 ./dcc -d ast < ../tests/4_codegen/tictactoe.decaf > debug.txt
 ./dcc -d ast st tac < ../tests/4_codegen/tictactoe.decaf > debug.txt
 ```
+
+## Multi-pass Lexical/Syntax/Semantic Analysis, IR Generation and Code Emission
+The compiler traverses source code and AST for multiple passes to perform lexical/syntax/semantic analysis, generate IR and emit MIPS assembly. The multi-pass analysis is implementated as `Program::BuildST()`, `Program::Check()` and `Program::Emit()` in `ast_stmt.cc`. 
+* Pass 0: Traverse source code and build AST
+  * The scanner and parser traverse source code and build the AST
+  * The compiler reports all lexical errors and syntax errors in this pass
+* Pass 1: Build symbol table
+  * The compiler traverses AST and reports declaration conflict errors in local scope
+  * With this pass, the compiler supports the feature that all declarations in a scope are immediately visible when entering the scope
+* Pass 2: Check identifier declaration
+  * The compiler traverses AST and reports errors of undeclared indentifiers based on the symbol table built in previous pass
+* Pass 3: Analyze class/interface inheritance
+  * The compiler traverses AST and reports inheritance-related errors such as mismatched overriden class members and unimplemented interfaces
+* Pass 4: Check all other semantic errors
+  * The compiler traverses AST and reports type errors, function argument errors, bread, field access and function calls
+  * Until this pass, the compiler can fully understand scopes and inheritance to perform accurate semantic analysis
+* Pass 5: Generate TAC as IR
+  * The compiler checks the existance of main function with signature `void main() {}`
+  * The compiler assigns offsets for class members and global variables, and it adds prefix to all functions and class methods
+  * The compiler traverses AST and generate TAC
+  * The compiler creates VTables to support dynamic dispatch of class virtual methods
+* Pass 6: Emit MIPS assembly based on TAC
+  * The compiler emits MIPS assembly that can be executed by the SPIM simulator
 
 ## Source Code Structure
 * src/Makefile
