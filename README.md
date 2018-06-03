@@ -97,3 +97,6 @@ The compiler traverses source code and AST for multiple passes to perform lexica
   > https://en.wikipedia.org/wiki/MIPS_architecture
 * SPIM simulator - A MIPS processor similator
   > https://en.wikipedia.org/wiki/SPIM
+* The MIPS Info Sheet
+  > http://www.cs.tufts.edu/comp/140/lectures/Day_3/mips_summary.pdf
+
